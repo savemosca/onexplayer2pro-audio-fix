@@ -7,6 +7,13 @@ This guide walks you through enabling internal speaker audio on the **OneXPlayer
 >This fix uses `hda-verb` to send low-level audio commands. While widely used, it carries some risk of audio instability or hardware issues.  
 >**Use at your own risk.**
 
+ℹ️  The verb sequence was captured on the **8840U** variant. If you have the **7840U** variant, check that your codec matches before installing:
+
+```bash
+grep -E '^(Codec|Vendor Id|Subsystem Id)' /proc/asound/card*/codec#0
+```
+
+and pass the exact ids to the installer with `--codec-vendor-id`/`--codec-subsystem-id` as shown below.
 
 ---
 
@@ -49,6 +56,7 @@ It installs:
 - Codec safety policy at `/usr/local/lib/oxp2p-audio-fix/oxp2p-audio-fix.env`
 - A boot service at `/etc/systemd/system/fix_audio.service`
 - A resume hook at `/etc/systemd/system-sleep/oxp2p-audio-fix`
+- Optionally, an HDA power-save override at `/etc/modprobe.d/oxp2p-audio-fix-power-save.conf` (with `--disable-hda-power-save`)
 
 To apply the fix immediately after installing:
 
@@ -73,6 +81,20 @@ If you install somewhere custom, use a root-owned system path:
 ```bash
 sudo bash ./install.sh --install-dir /usr/local/lib/oxp2p-audio-fix
 ```
+
+---
+
+## Troubleshooting
+
+### Speakers stop working after the device sits idle
+
+The audio driver can power the codec down after a period of silence (the `snd_hda_intel` `power_save` option, enabled by default on many distributions). When the codec powers back up, the driver re-initializes it and the low-level writes applied by this fix can be lost until the next boot or resume. If that happens, reinstall with:
+
+```bash
+sudo bash ./install.sh --disable-hda-power-save
+```
+
+This writes `/etc/modprobe.d/oxp2p-audio-fix-power-save.conf` to keep the codec powered (at a small battery cost) and applies the setting immediately when possible. The uninstaller removes the override.
 
 ---
 

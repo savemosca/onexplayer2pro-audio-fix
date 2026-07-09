@@ -61,7 +61,7 @@ if [ ! -x "$FIX_SCRIPT" ]; then
 fi
 
 echo "Reapplying ONEXPLAYER 2 Pro audio fix after resume" >&2
-if ! "$FIX_SCRIPT" -y -w "$RESUME_WAIT_SECONDS"; then
+if ! "$FIX_SCRIPT" -y -k -w "$RESUME_WAIT_SECONDS"; then
     echo "Unable to reapply ONEXPLAYER 2 Pro audio fix after resume" >&2
     exit 1
 fi

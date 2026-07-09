@@ -5,6 +5,7 @@ DEFAULT_INSTALL_DIR="/usr/local/lib/oxp2p-audio-fix"
 INSTALL_DIR="${INSTALL_DIR:-$DEFAULT_INSTALL_DIR}"
 SERVICE_PATH="/etc/systemd/system/fix_audio.service"
 SLEEP_HOOK_PATH="/etc/systemd/system-sleep/oxp2p-audio-fix"
+POWER_SAVE_CONF_PATH="/etc/modprobe.d/oxp2p-audio-fix-power-save.conf"
 MARKER_NAME=".oxp2p-audio-fix-installed"
 KEEP_FILES=0
 FORCE_REMOVE_FILES=0
@@ -81,6 +82,10 @@ fi
 
 rm -f "$SERVICE_PATH"
 rm -f "$SLEEP_HOOK_PATH"
+if [ -f "$POWER_SAVE_CONF_PATH" ]; then
+    rm -f "$POWER_SAVE_CONF_PATH"
+    echo "Removed HDA power-save override; the default power_save setting returns on next boot." >&2
+fi
 
 if [ "$KEEP_FILES" -ne 1 ]; then
     if [ -f "$MARKER_PATH" ] || [ "$FORCE_REMOVE_FILES" -eq 1 ]; then

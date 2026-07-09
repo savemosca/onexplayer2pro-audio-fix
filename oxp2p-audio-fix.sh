@@ -107,7 +107,7 @@ run_hda_verb() {
     local param=$4
     local output status failed
 
-    if output=$(hda-verb "$device" "$nid" "$verb" "$param" 2>&1); then
+    if output=$(LC_ALL=C hda-verb "$device" "$nid" "$verb" "$param" 2>&1); then
         status=0
     else
         status=$?
