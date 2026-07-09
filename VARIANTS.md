@@ -115,12 +115,14 @@ The report contains no secrets by design: codec identity, PCI layout and registe
 - Codec: Realtek ALC245, Vendor Id `0x10ec0245`, Subsystem Id `0x1f751602`, Revision Id `0x100001`
 - Audio controller: `0000:64:00.6` (AMD Ryzen HD Audio, `1022:15e3`) — matches the default target path
 - Node 0x20 present with 142 coefficients; all codec guardrails pass
-- Cold-boot reference reports: `reports/7840u-arp23p/`
-- **Status: diagnostics collected — the verb sequence has not been verified on this variant yet.** Once verified, the strict install line is:
+- Reference reports: `reports/7840u-arp23p/` (cold-boot baseline and post-fix COEF dump)
+- **Status: verified working (2026-07-10).** The existing verb sequence applies as-is; internal speakers confirmed working after a supervised first run. The strict install line:
 
   ```bash
   sudo bash ./install.sh --codec-vendor-id 0x10ec0245 --codec-subsystem-id 0x1f751602
   ```
+
+Net effect of the sequence visible in the linear COEF dump (cold → post-fix): `0x10: 0x0020 → 0x0220`, `0x2a: 0x004a → 0x0000`, `0x2b: 0x5294 → 0xffff`, `0x4a: 0x20b0 → 0xa0a0`, `0x67: 0x1000 → 0x3000`. The `0x10` and `0x67` values match direct writes in the sequence; the rest reflect the sequence plus normal driver activity. Most of the sequence's writes target banked registers that a linear dump does not reach, so a small diff here is expected.
 
 ### 8840U
 

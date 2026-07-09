@@ -7,7 +7,7 @@ This guide walks you through enabling internal speaker audio on the **OneXPlayer
 >This fix uses `hda-verb` to send low-level audio commands. While widely used, it carries some risk of audio instability or hardware issues.  
 >**Use at your own risk.**
 
-ℹ️  The verb sequence was captured on the **8840U** variant. If you have the **7840U** variant, check that your codec matches before installing:
+ℹ️  The verb sequence was captured on the **8840U** variant. The **7840U** (ARP23P) variant has been verified working with the same sequence — see [VARIANTS.md](VARIANTS.md) for its codec ids and install line. For any other variant, check that your codec matches before installing:
 
 ```bash
 grep -E '^(Codec|Vendor Id|Subsystem Id)' /proc/asound/card*/codec#0
