@@ -14,11 +14,14 @@ This guide walks you through enabling internal speaker audio on the **OneXPlayer
 
 ### 1. **Download the Files**
 
-Create a directory in /home/bazzite
+Download or clone the repository into any temporary working directory.
+
 ```bash
-mkdir -p /home/bazzite/oxp2p-audio-fix
+git clone https://github.com/savemosca/onexplayer2pro-audio-fix.git
+cd onexplayer2pro-audio-fix
 ```
-Download the repository files into the newly created directory.
+
+The installer copies the runtime files into a root-owned system directory. Do not run the service directly from a user-writable directory such as `/home/bazzite`.
 
 >All credit for this script goes to fortime2024 from the [One-netbook official Discord](https://discord.com/channels/547366894995243029/1210923924439699516/1399685604932849726) and [here](https://github.com/ChimeraOS/chimeraos/issues/742#issuecomment-2250951477)
 
@@ -36,27 +39,39 @@ A reboot will be recommended after the install is complete. Reboot before starti
 ### 3. **Run the Installer**
 
 ```bash
-cd /home/bazzite/oxp2p-audio-fix
 sudo bash ./install.sh
 ```
 
-The installer applies the fix at boot and installs a system-sleep hook to reapply it after resume. It does not install `alsa-tools` for you.
+The installer enables the fix at boot and installs a system-sleep hook to reapply it after resume. It does not start the service immediately unless you ask it to, and it does not install `alsa-tools` for you.
 
 It installs:
-- Runtime files into `/home/bazzite/oxp2p-audio-fix`
+- Runtime files into `/usr/local/lib/oxp2p-audio-fix`
+- Codec safety policy at `/usr/local/lib/oxp2p-audio-fix/oxp2p-audio-fix.env`
 - A boot service at `/etc/systemd/system/fix_audio.service`
 - A resume hook at `/etc/systemd/system-sleep/oxp2p-audio-fix`
 
-If you install the repo somewhere else, pass the same path to the installer:
+To apply the fix immediately after installing:
 
 ```bash
-sudo bash ./install.sh --install-dir /path/to/oxp2p-audio-fix
+sudo systemctl start fix_audio.service
 ```
 
-To install without starting the service immediately:
+Or install and start in one step:
 
 ```bash
-sudo bash ./install.sh --no-start
+sudo bash ./install.sh --start-now
+```
+
+The script checks the expected PCI audio path, confirms the codec metadata from `/proc/asound/cardN/codec#0`, requires a Realtek vendor id prefix by default, and requires node `0x20` before writing verbs. For stricter matching, pass the exact codec IDs from your device during install:
+
+```bash
+sudo bash ./install.sh --codec-vendor-id <vendor-id> --codec-subsystem-id <subsystem-id>
+```
+
+If you install somewhere custom, use a root-owned system path:
+
+```bash
+sudo bash ./install.sh --install-dir /usr/local/lib/oxp2p-audio-fix
 ```
 
 ---
@@ -64,19 +79,19 @@ sudo bash ./install.sh --no-start
 ## Uninstall
 
 ```bash
-sudo bash /home/bazzite/oxp2p-audio-fix/uninstall.sh
+sudo bash /usr/local/lib/oxp2p-audio-fix/uninstall.sh
 ```
 
 For a custom install path:
 
 ```bash
-sudo bash /path/to/oxp2p-audio-fix/uninstall.sh --install-dir /path/to/oxp2p-audio-fix
+sudo bash /path/to/installed/oxp2p-audio-fix/uninstall.sh --install-dir /path/to/installed/oxp2p-audio-fix
 ```
 
 To remove only the systemd service and sleep hook while keeping the installed files:
 
 ```bash
-sudo bash /home/bazzite/oxp2p-audio-fix/uninstall.sh --keep-files
+sudo bash /usr/local/lib/oxp2p-audio-fix/uninstall.sh --keep-files
 ```
 
 ## 🎉 Done!
