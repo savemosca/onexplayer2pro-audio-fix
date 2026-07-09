@@ -15,7 +15,7 @@ grep -E '^(Codec|Vendor Id|Subsystem Id)' /proc/asound/card*/codec#0
 
 and pass the exact ids to the installer with `--codec-vendor-id`/`--codec-subsystem-id` as shown below.
 
-To help adapt the fix to other variants, run `bash collect-diagnostics.sh` on the device and share the resulting `oxp2p-audio-diagnostics.txt`. Add `--dump-coef` as root only if coefficient data is needed; it is limited to the target audio path and restores the saved COEF index afterward.
+To help adapt the fix to other variants, run `bash collect-diagnostics.sh` on the device and share the resulting `oxp2p-audio-diagnostics.txt`. Add `--dump-coef` as root only if coefficient data is needed; it is limited to the target audio path and restores the saved COEF index afterward. If audio sits at a different PCI path on your variant, pass `--target PATH` with a device from `/dev/snd/by-path/`.
 
 ---
 

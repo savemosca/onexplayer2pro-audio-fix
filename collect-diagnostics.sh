@@ -14,9 +14,11 @@ DUMP_COEF=0
 TARGET_AUDIO_BY_PATH="${TARGET_AUDIO_BY_PATH:-/dev/snd/by-path/pci-0000:64:00.6}"
 
 usage() {
-    echo "Usage: $0 [--dump-coef] [OUTPUT_FILE]" >&2
-    echo "  --dump-coef   Dump target Realtek COEF registers (requires root and hda-verb)" >&2
-    echo "  OUTPUT_FILE   Where to write the report (default: $OUTPUT_FILE)" >&2
+    echo "Usage: $0 [--dump-coef] [--target PATH] [OUTPUT_FILE]" >&2
+    echo "  --dump-coef    Dump target Realtek COEF registers (requires root and hda-verb)" >&2
+    echo "  --target PATH  Audio by-path device to use for the COEF dump" >&2
+    echo "                 (default: $TARGET_AUDIO_BY_PATH; TARGET_AUDIO_BY_PATH env also works)" >&2
+    echo "  OUTPUT_FILE    Where to write the report (default: $OUTPUT_FILE)" >&2
 }
 
 while [ "$#" -gt 0 ]; do
@@ -24,6 +26,14 @@ while [ "$#" -gt 0 ]; do
       --dump-coef)
         DUMP_COEF=1
         shift
+        ;;
+      --target)
+        if [ "$#" -lt 2 ]; then
+            usage
+            exit 64
+        fi
+        TARGET_AUDIO_BY_PATH=$2
+        shift 2
         ;;
       -h|--help)
         usage
@@ -102,6 +112,7 @@ resolve_target_card() {
 
     if [ ! -e "$TARGET_AUDIO_BY_PATH" ]; then
         echo "Target audio path was not found: $TARGET_AUDIO_BY_PATH" >&2
+        echo "If audio sits at a different PCI path on this variant, re-run with --target PATH (see the /dev/snd/by-path section of the report)." >&2
         return 1
     fi
 
@@ -231,7 +242,7 @@ dump_coefs() {
         section "Realtek COEF registers (node 0x20)"
         dump_coefs
     fi
-} > "$OUTPUT_FILE"
+} > "$OUTPUT_FILE" 2>&1
 
 echo "Diagnostics written to: $OUTPUT_FILE"
 if [ "$DUMP_COEF" -eq 0 ]; then
