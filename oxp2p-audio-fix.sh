@@ -1,5 +1,13 @@
 #!/bin/bash
 
+AUDIO_BY_PATH="/dev/snd/by-path/pci-0000:64:00.6"
+
+usage() {
+    echo "Usage: $0 [-y] [-w SECONDS]" >&2
+    echo "  -y            Skip the interactive confirmation prompt" >&2
+    echo "  -w SECONDS    Wait up to SECONDS for the audio device to appear (default: 0)" >&2
+}
+
 run_verbs() {
     local device="$1"
     # echo "00010048: hda-verb "$device" 0x20 0x500 0x00"
@@ -1195,6 +1203,38 @@ run_verbs() {
 }
 
 
+# Default: not auto-confirmed, no wait for the device
+AUTO_CONFIRM=0
+WAIT_SECONDS=0
+
+# Parse command-line options
+while getopts "hyw:" opt; do
+  case $opt in
+    h)
+      usage
+      exit 0
+      ;;
+    y)
+      AUTO_CONFIRM=1
+      ;;
+    w)
+      WAIT_SECONDS=$OPTARG
+      ;;
+    *)
+      usage
+      exit 64
+      ;;
+  esac
+done
+
+case "$WAIT_SECONDS" in
+  ''|*[!0-9]*)
+    echo "Invalid wait value for -w (expected a number of seconds): $WAIT_SECONDS" >&2
+    usage
+    exit 64
+    ;;
+esac
+
 if [ "$(id -u)" -ne 0 ]; then
     echo "This script should be run by root!" >&2
     exit 1
@@ -1205,29 +1245,52 @@ if ! command -v hda-verb >/dev/null; then
     exit 2
 fi
 
-# Default: not auto-confirmed
-AUTO_CONFIRM=0
-
-# Parse command-line options
-while getopts "y" opt; do
-  case $opt in
-    y)
-      AUTO_CONFIRM=1
-      ;;
-    *)
-      ;;
-  esac
+waited=0
+while [ ! -e "$AUDIO_BY_PATH" ] && [ "$waited" -lt "$WAIT_SECONDS" ]; do
+    sleep 1
+    waited=$((waited + 1))
 done
 
-set -e
-card_num=$(realpath "/dev/snd/by-path/pci-0000:64:00.6"|sed 's@/dev/snd/controlC@@')
-device=/dev/snd/hwC${card_num}D0
-set +e
+if [ ! -e "$AUDIO_BY_PATH" ]; then
+    echo "Expected audio device path was not found: $AUDIO_BY_PATH" >&2
+    echo "This fix is tied to the ONEXPLAYER 2 Pro audio PCI path; refusing to guess." >&2
+    exit 3
+fi
+
+control_device=$(realpath "$AUDIO_BY_PATH") || {
+    echo "Unable to resolve audio device path: $AUDIO_BY_PATH" >&2
+    exit 3
+}
+
+case "$control_device" in
+  /dev/snd/controlC*)
+    card_num=${control_device#/dev/snd/controlC}
+    ;;
+  *)
+    echo "Unexpected audio control device: $control_device" >&2
+    exit 3
+    ;;
+esac
+
+case "$card_num" in
+  ''|*[!0-9]*)
+    echo "Unable to determine ALSA card number from: $control_device" >&2
+    exit 3
+    ;;
+esac
+
+device="/dev/snd/hwC${card_num}D0"
+if [ ! -e "$device" ]; then
+    echo "Expected HDA hardware device was not found: $device" >&2
+    exit 3
+fi
+
+echo "Using audio device $device from $AUDIO_BY_PATH" >&2
 
 # Confirmation logic
 if [ "$AUTO_CONFIRM" -ne 1 ]; then
   echo -n "These verbs were generated from a ONEXPLAYER 2 PRO (8840u), I can't be sure it will work for you. USE ON YOUR OWN RISK!!! continue [y/N] " >&2
-  read confirm
+  read -r confirm
   if [ "$confirm" != "y" ] && [ "$confirm" != "Y" ]; then
     echo "Skip" >&2
     exit
