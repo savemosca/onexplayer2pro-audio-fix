@@ -15,6 +15,8 @@ grep -E '^(Codec|Vendor Id|Subsystem Id)' /proc/asound/card*/codec#0
 
 and pass the exact ids to the installer with `--codec-vendor-id`/`--codec-subsystem-id` as shown below.
 
+To help adapt the fix to other variants, run `bash collect-diagnostics.sh` on the device and share the resulting `oxp2p-audio-diagnostics.txt` (add `--dump-coef` as root to include the Realtek coefficient registers).
+
 ---
 
 ## 📝 Step-by-Step Instructions
