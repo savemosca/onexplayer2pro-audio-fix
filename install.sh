@@ -14,6 +14,7 @@ CODEC_VENDOR_PREFIX="${EXPECTED_CODEC_VENDOR_PREFIX:-0x10ec}"
 CODEC_VENDOR_IDS="${EXPECTED_CODEC_VENDOR_IDS:-}"
 CODEC_SUBSYSTEM_IDS="${EXPECTED_CODEC_SUBSYSTEM_IDS:-}"
 CODEC_NAME_PATTERN="${EXPECTED_CODEC_NAME_PATTERN:-Realtek}"
+SENTINEL_COEFS="${FIX_SENTINEL_COEFS:-}"
 
 # Defaults for the resume-hook timings written to the env file; kept in
 # sync with the fallbacks in fix_audio_sleep.sh. Values already present
@@ -32,6 +33,8 @@ usage() {
     echo "  --codec-subsystem-id ID    Require an exact codec Subsystem Id; can be passed multiple times" >&2
     echo "  --codec-vendor-prefix HEX  Require a Vendor Id prefix when no exact ids are set (default: $CODEC_VENDOR_PREFIX)" >&2
     echo "  --codec-name-pattern TEXT  Require codec name to contain TEXT (default: $CODEC_NAME_PATTERN)" >&2
+    echo "  --sentinel-coef IDX=VAL    Sentinel COEF used to verify the fix is applied (e.g. 0x10=0x0220);" >&2
+    echo "                             can be passed multiple times; see VARIANTS.md for known values" >&2
     echo "  --disable-hda-power-save   Keep the HDA codec powered so the fix is not lost when it idles" >&2
     echo "  --allow-risky-install-dir  Allow install paths under home or temporary directories" >&2
 }
@@ -97,6 +100,14 @@ while [ "$#" -gt 0 ]; do
         CODEC_NAME_PATTERN=$2
         shift 2
         ;;
+      --sentinel-coef)
+        if [ "$#" -lt 2 ]; then
+            usage
+            exit 64
+        fi
+        SENTINEL_COEFS=$(append_list_value "$SENTINEL_COEFS" "$2")
+        shift 2
+        ;;
       --disable-hda-power-save)
         DISABLE_HDA_POWER_SAVE=1
         shift
@@ -116,26 +127,43 @@ while [ "$#" -gt 0 ]; do
     esac
 done
 
+is_hex_word() {
+    case "$1" in
+      0x*)
+        case "${1#0x}" in
+          '')
+            return 1
+            ;;
+          *[!0-9a-fA-F]*)
+            return 1
+            ;;
+        esac
+        return 0
+        ;;
+    esac
+    return 1
+}
+
+is_sentinel_pair() {
+    local pair=$1
+    local idx val
+
+    idx=${pair%%=*}
+    val=${pair#*=}
+
+    if [ "$idx" = "$pair" ] || ! is_hex_word "$idx" || ! is_hex_word "$val"; then
+        return 1
+    fi
+}
+
 require_hex_id() {
     local label=$1
     local value=$2
 
-    case "$value" in
-      0x*)
-        case "${value#0x}" in
-          '')
-            ;;
-          *[!0-9a-fA-F]*)
-            ;;
-          *)
-            return 0
-            ;;
-        esac
-        ;;
-    esac
-
-    echo "$label must be a hex id like 0x10ec0257: $value" >&2
-    exit 64
+    if ! is_hex_word "$value"; then
+        echo "$label must be a hex id like 0x10ec0257: $value" >&2
+        exit 64
+    fi
 }
 
 require_hex_id "codec vendor prefix (--codec-vendor-prefix)" "$CODEC_VENDOR_PREFIX"
@@ -146,6 +174,13 @@ done
 
 for codec_id in $CODEC_SUBSYSTEM_IDS; do
     require_hex_id "codec subsystem id (--codec-subsystem-id)" "$codec_id"
+done
+
+for sentinel_pair in $SENTINEL_COEFS; do
+    if ! is_sentinel_pair "$sentinel_pair"; then
+        echo "Sentinel coefficient (--sentinel-coef) must look like 0x10=0x0220: $sentinel_pair" >&2
+        exit 64
+    fi
 done
 
 # The codec name pattern ends up in the generated env file, which is parsed
@@ -237,14 +272,14 @@ is_nonnegative_integer() {
     esac
 }
 
-preserve_resume_settings() {
-    local key value
+preserve_env_settings() {
+    local key value pair pairs_valid
 
     [ -f "$ENV_PATH" ] || return 0
 
     while IFS='=' read -r key value; do
         case "$key" in
-          RESUME_WAIT_SECONDS|RESUME_SETTLE_SECONDS|RESUME_REAPPLY_COUNT|RESUME_REAPPLY_INTERVAL_SECONDS)
+          RESUME_WAIT_SECONDS|RESUME_SETTLE_SECONDS|RESUME_REAPPLY_COUNT|RESUME_REAPPLY_INTERVAL_SECONDS|FIX_SENTINEL_COEFS)
             ;;
           *)
             continue
@@ -257,6 +292,29 @@ preserve_resume_settings() {
             value=${value%\"}
             ;;
         esac
+
+        if [ "$key" = "FIX_SENTINEL_COEFS" ]; then
+            # New --sentinel-coef flags (or the env var) win over the
+            # values already installed.
+            if [ -n "$SENTINEL_COEFS" ] || [ -z "$value" ]; then
+                continue
+            fi
+
+            pairs_valid=1
+            for pair in $value; do
+                if ! is_sentinel_pair "$pair"; then
+                    pairs_valid=0
+                    break
+                fi
+            done
+
+            if [ "$pairs_valid" -eq 1 ]; then
+                SENTINEL_COEFS=$value
+            else
+                echo "Ignoring invalid FIX_SENTINEL_COEFS in existing env file: $value" >&2
+            fi
+            continue
+        fi
 
         if ! is_nonnegative_integer "$value"; then
             echo "Ignoring invalid $key in existing env file: $value" >&2
@@ -284,6 +342,7 @@ write_env_file() {
         printf 'EXPECTED_CODEC_SUBSYSTEM_IDS="%s"\n' "$CODEC_SUBSYSTEM_IDS"
         printf 'EXPECTED_CODEC_NAME_PATTERN="%s"\n' "$CODEC_NAME_PATTERN"
         printf 'ALLOW_UNSUPPORTED_CODEC="0"\n'
+        printf 'FIX_SENTINEL_COEFS="%s"\n' "$SENTINEL_COEFS"
         printf 'RESUME_WAIT_SECONDS="%s"\n' "$RESUME_WAIT_SECONDS"
         printf 'RESUME_SETTLE_SECONDS="%s"\n' "$RESUME_SETTLE_SECONDS"
         printf 'RESUME_REAPPLY_COUNT="%s"\n' "$RESUME_REAPPLY_COUNT"
@@ -367,7 +426,7 @@ copy_file "$SCRIPT_DIR/install.sh" "$INSTALL_DIR/install.sh" 0755
 copy_file "$SCRIPT_DIR/uninstall.sh" "$INSTALL_DIR/uninstall.sh" 0755
 copy_file "$SCRIPT_DIR/README.md" "$INSTALL_DIR/README.md" 0644
 
-preserve_resume_settings
+preserve_env_settings
 write_env_file
 write_marker
 write_service
@@ -392,6 +451,11 @@ fi
 
 echo "Installed ONEXPLAYER 2 Pro audio fix into: $INSTALL_DIR"
 echo "Installed codec policy: $ENV_PATH"
+if [ -n "$SENTINEL_COEFS" ]; then
+    echo "Sentinel verification enabled: $SENTINEL_COEFS"
+else
+    echo "Sentinel verification disabled (no --sentinel-coef given); the resume hook will reapply blindly."
+fi
 echo "Installed systemd service: $SERVICE_PATH"
 echo "Installed resume hook: $SLEEP_HOOK_PATH"
 if [ "$DISABLE_HDA_POWER_SAVE" -eq 1 ]; then

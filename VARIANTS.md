@@ -62,6 +62,8 @@ Three possible outcomes:
 
   After installing, verify persistence: reboot (speakers should work on their own), then suspend and resume (the sleep hook reapplies the fix). If audio later disappears after the device sits idle while awake, re-run the installer with `--disable-hda-power-save` added.
 
+  The post-fix dump also gives you **sentinel coefficients**: compare it against the cold-boot dump (`diff` the two files) and pick one or two coefficients whose post-fix value differs from the cold value and matches a direct write in the verb sequence. Pass them to the installer as `--sentinel-coef 0xIDX=0xVALUE` — the resume hook then *verifies* the fix through them and reapplies only when the check fails, instead of blindly reapplying. `oxp2p-audio-fix.sh -c` reports the current state (exit 0: applied, 6: not applied, 7: no sentinels configured).
+
 - **No sound, nothing else strange**: the sequence does not apply to your variant as-is; continue with Step 3 below.
 
 - **Distorted or broken audio**: power the device off completely (a full shutdown, not a reboot). The codec resets to its defaults and nothing persists.
@@ -116,10 +118,12 @@ The report contains no secrets by design: codec identity, PCI layout and registe
 - Audio controller: `0000:64:00.6` (AMD Ryzen HD Audio, `1022:15e3`) — matches the default target path
 - Node 0x20 present with 142 coefficients; all codec guardrails pass
 - Reference reports: `reports/7840u-arp23p/` (cold-boot baseline and post-fix COEF dump)
+- Sentinel coefficients (values only present when the fix is applied): `0x10=0x0220`, `0x67=0x3000`
 - **Status: verified working (2026-07-10).** The existing verb sequence applies as-is; internal speakers confirmed working after a supervised first run. The strict install line:
 
   ```bash
-  sudo bash ./install.sh --codec-vendor-id 0x10ec0245 --codec-subsystem-id 0x1f751602
+  sudo bash ./install.sh --codec-vendor-id 0x10ec0245 --codec-subsystem-id 0x1f751602 \
+      --sentinel-coef 0x10=0x0220 --sentinel-coef 0x67=0x3000
   ```
 
 Net effect of the sequence visible in the linear COEF dump (cold → post-fix): `0x10: 0x0020 → 0x0220`, `0x2a: 0x004a → 0x0000`, `0x2b: 0x5294 → 0xffff`, `0x4a: 0x20b0 → 0xa0a0`, `0x67: 0x1000 → 0x3000`. The `0x10` and `0x67` values match direct writes in the sequence; the rest reflect the sequence plus normal driver activity. Most of the sequence's writes target banked registers that a linear dump does not reach, so a small diff here is expected.

@@ -20,7 +20,7 @@ load_env_file() {
         esac
 
         case "$key" in
-          EXPECTED_CODEC_VENDOR_PREFIX|EXPECTED_CODEC_VENDOR_IDS|EXPECTED_CODEC_SUBSYSTEM_IDS|EXPECTED_CODEC_NAME_PATTERN|ALLOW_UNSUPPORTED_CODEC|RESUME_WAIT_SECONDS|RESUME_SETTLE_SECONDS|RESUME_REAPPLY_COUNT|RESUME_REAPPLY_INTERVAL_SECONDS)
+          EXPECTED_CODEC_VENDOR_PREFIX|EXPECTED_CODEC_VENDOR_IDS|EXPECTED_CODEC_SUBSYSTEM_IDS|EXPECTED_CODEC_NAME_PATTERN|ALLOW_UNSUPPORTED_CODEC|FIX_SENTINEL_COEFS|RESUME_WAIT_SECONDS|RESUME_SETTLE_SECONDS|RESUME_REAPPLY_COUNT|RESUME_REAPPLY_INTERVAL_SECONDS)
             ;;
           *)
             continue
@@ -90,17 +90,77 @@ if [ "$RESUME_SETTLE_SECONDS" -gt 0 ]; then
     sleep "$RESUME_SETTLE_SECONDS"
 fi
 
+run_check() {
+    "$FIX_SCRIPT" -c -w "$RESUME_WAIT_SECONDS"
+}
+
+apply_fix() {
+    "$FIX_SCRIPT" -y -k -w "$RESUME_WAIT_SECONDS"
+}
+
+reapply_blindly() {
+    local attempt=1
+
+    while [ "$attempt" -le "$RESUME_REAPPLY_COUNT" ]; do
+        echo "Reapplying ONEXPLAYER 2 Pro audio fix after resume ($attempt/$RESUME_REAPPLY_COUNT)" >&2
+        if ! apply_fix; then
+            echo "Unable to reapply ONEXPLAYER 2 Pro audio fix after resume" >&2
+            exit 1
+        fi
+
+        if [ "$attempt" -lt "$RESUME_REAPPLY_COUNT" ] && [ "$RESUME_REAPPLY_INTERVAL_SECONDS" -gt 0 ]; then
+            sleep "$RESUME_REAPPLY_INTERVAL_SECONDS"
+        fi
+
+        attempt=$((attempt + 1))
+    done
+}
+
+check_rc=0
+run_check || check_rc=$?
+
+if [ "$check_rc" -eq 7 ]; then
+    # No sentinel coefficients configured: fall back to blind reapplication.
+    reapply_blindly
+    exit 0
+fi
+
+if [ "$check_rc" -eq 0 ]; then
+    echo "Audio fix already verified after resume; nothing to reapply." >&2
+    exit 0
+fi
+
 attempt=1
 while [ "$attempt" -le "$RESUME_REAPPLY_COUNT" ]; do
-    echo "Reapplying ONEXPLAYER 2 Pro audio fix after resume ($attempt/$RESUME_REAPPLY_COUNT)" >&2
-    if ! "$FIX_SCRIPT" -y -k -w "$RESUME_WAIT_SECONDS"; then
+    echo "Applying ONEXPLAYER 2 Pro audio fix after resume ($attempt/$RESUME_REAPPLY_COUNT)" >&2
+
+    apply_rc=0
+    apply_fix || apply_rc=$?
+    case "$apply_rc" in
+      0)
+        ;;
+      6)
+        echo "Sentinel verification failed right after applying; will re-check." >&2
+        ;;
+      *)
         echo "Unable to reapply ONEXPLAYER 2 Pro audio fix after resume" >&2
         exit 1
+        ;;
+    esac
+
+    if [ "$RESUME_REAPPLY_INTERVAL_SECONDS" -gt 0 ]; then
+        sleep "$RESUME_REAPPLY_INTERVAL_SECONDS"
     fi
 
-    if [ "$attempt" -lt "$RESUME_REAPPLY_COUNT" ] && [ "$RESUME_REAPPLY_INTERVAL_SECONDS" -gt 0 ]; then
-        sleep "$RESUME_REAPPLY_INTERVAL_SECONDS"
+    check_rc=0
+    run_check || check_rc=$?
+    if [ "$check_rc" -eq 0 ]; then
+        echo "Audio fix verified after resume (attempt $attempt/$RESUME_REAPPLY_COUNT)." >&2
+        exit 0
     fi
 
     attempt=$((attempt + 1))
 done
+
+echo "Audio fix could not be verified after $RESUME_REAPPLY_COUNT attempt(s) following resume." >&2
+exit 1

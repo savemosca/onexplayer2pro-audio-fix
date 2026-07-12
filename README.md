@@ -114,6 +114,8 @@ sudo bash ./install.sh --codec-vendor-id <your-vendor-id> --codec-subsystem-id <
 
 The resume timings are stored in `/usr/local/lib/oxp2p-audio-fix/oxp2p-audio-fix.env` and can be tuned with `RESUME_WAIT_SECONDS`, `RESUME_SETTLE_SECONDS`, `RESUME_REAPPLY_COUNT`, and `RESUME_REAPPLY_INTERVAL_SECONDS`. Re-running the installer preserves previously tuned timings.
 
+If you install with `--sentinel-coef` values for your variant (see [VARIANTS.md](VARIANTS.md)), the resume hook verifies whether the fix is actually applied and reapplies only when the check fails — fewer redundant reapplications, fewer pops, and the journal tells you whether the fix was verified. Re-running the installer preserves previously configured sentinels unless new `--sentinel-coef` flags are given.
+
 ---
 
 ## Uninstall

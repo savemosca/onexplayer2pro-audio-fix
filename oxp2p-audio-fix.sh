@@ -7,16 +7,20 @@ EXPECTED_CODEC_VENDOR_IDS="${EXPECTED_CODEC_VENDOR_IDS:-}"
 EXPECTED_CODEC_SUBSYSTEM_IDS="${EXPECTED_CODEC_SUBSYSTEM_IDS:-}"
 EXPECTED_CODEC_NAME_PATTERN="${EXPECTED_CODEC_NAME_PATTERN:-Realtek}"
 ALLOW_UNSUPPORTED_CODEC="${ALLOW_UNSUPPORTED_CODEC:-0}"
+FIX_SENTINEL_COEFS="${FIX_SENTINEL_COEFS:-}"
 CONTINUE_ON_ERROR=0
 VERBOSE=0
+CHECK_ONLY=0
 HDA_VERB_FAILURES=0
 
 usage() {
-    echo "Usage: $0 [-y] [-f] [-k] [-v] [-w SECONDS]" >&2
+    echo "Usage: $0 [-y] [-f] [-k] [-v] [-c] [-w SECONDS]" >&2
     echo "  -y            Skip the interactive confirmation prompt" >&2
     echo "  -f            Force running even if codec validation fails" >&2
     echo "  -k            Continue after failed hda-verb commands" >&2
     echo "  -v            Show hda-verb output" >&2
+    echo "  -c            Only check the sentinel COEFs from FIX_SENTINEL_COEFS and exit" >&2
+    echo "                (exit 0: fix applied, 6: not applied, 7: no sentinels configured)" >&2
     echo "  -w SECONDS    Wait up to SECONDS for the audio device to appear (default: 0)" >&2
 }
 
@@ -138,6 +142,101 @@ run_hda_verb() {
     if [ "$VERBOSE" -eq 1 ] && [ -n "$output" ]; then
         printf '%s\n' "$output" >&2
     fi
+}
+
+read_hda_value() {
+    local device=$1
+    local nid=$2
+    local verb=$3
+    local param=$4
+    local output value
+
+    if ! output=$(LC_ALL=C hda-verb "$device" "$nid" "$verb" "$param" 2>&1); then
+        printf '%s\n' "$output" >&2
+        return 1
+    fi
+
+    case "$output" in
+      *ioctl*|*invalid*|*Invalid*|*open:*)
+        printf '%s\n' "$output" >&2
+        return 1
+        ;;
+    esac
+
+    value=$(printf '%s\n' "$output" | awk '/value =/{print $NF; exit}')
+    [ -n "$value" ] || return 1
+    printf '%s\n' "$value"
+}
+
+is_hex_word() {
+    case "$1" in
+      0x*)
+        case "${1#0x}" in
+          '')
+            return 1
+            ;;
+          *[!0-9a-fA-F]*)
+            return 1
+            ;;
+        esac
+        return 0
+        ;;
+    esac
+    return 1
+}
+
+validate_sentinels() {
+    local pair idx val
+
+    for pair in $FIX_SENTINEL_COEFS; do
+        idx=${pair%%=*}
+        val=${pair#*=}
+        if [ "$idx" = "$pair" ] || ! is_hex_word "$idx" || ! is_hex_word "$val"; then
+            echo "Invalid sentinel coefficient entry in FIX_SENTINEL_COEFS (expected 0xIDX=0xVALUE): $pair" >&2
+            return 1
+        fi
+    done
+}
+
+# Reads each sentinel COEF and compares it with the expected value.
+# Returns 0 when all match, 1 on a mismatch, 2 when a read fails.
+check_sentinels() {
+    local device=$1
+    local pair idx expected actual saved_index status
+
+    status=0
+
+    if ! saved_index=$(read_hda_value "$device" 0x20 0xd00 0x0); then
+        echo "Unable to read the current COEF index for the sentinel check." >&2
+        return 2
+    fi
+
+    for pair in $FIX_SENTINEL_COEFS; do
+        idx=${pair%%=*}
+        expected=${pair#*=}
+
+        if ! run_hda_verb "$device" 0x20 0x500 "$idx"; then
+            status=2
+            break
+        fi
+        if ! actual=$(read_hda_value "$device" 0x20 0xc00 0x0); then
+            status=2
+            break
+        fi
+
+        if ! is_hex_word "$actual"; then
+            echo "Unexpected sentinel read for coef $idx: $actual" >&2
+            status=2
+            break
+        fi
+        if [ "$((actual))" -ne "$((expected))" ]; then
+            echo "Sentinel coef $idx = $actual (expected $expected)" >&2
+            status=1
+        fi
+    done
+
+    run_hda_verb "$device" 0x20 0x500 "$saved_index" || true
+    return "$status"
 }
 
 run_verbs() {
@@ -1340,7 +1439,7 @@ AUTO_CONFIRM=0
 WAIT_SECONDS=0
 
 # Parse command-line options
-while getopts "hykvfw:" opt; do
+while getopts "hyckvfw:" opt; do
   case $opt in
     h)
       usage
@@ -1348,6 +1447,9 @@ while getopts "hykvfw:" opt; do
       ;;
     y)
       AUTO_CONFIRM=1
+      ;;
+    c)
+      CHECK_ONLY=1
       ;;
     f)
       ALLOW_UNSUPPORTED_CODEC=1
@@ -1437,6 +1539,36 @@ if ! validate_codec "$card_num"; then
     fi
 fi
 
+if [ -n "$FIX_SENTINEL_COEFS" ]; then
+    if ! validate_sentinels; then
+        exit 64
+    fi
+fi
+
+if [ "$CHECK_ONLY" -eq 1 ]; then
+    if [ -z "$FIX_SENTINEL_COEFS" ]; then
+        echo "No sentinel coefficients configured (FIX_SENTINEL_COEFS); cannot check whether the fix is applied." >&2
+        exit 7
+    fi
+
+    check_status=0
+    check_sentinels "$device" || check_status=$?
+    case "$check_status" in
+      0)
+        echo "Sentinel check passed: the audio fix appears applied." >&2
+        exit 0
+        ;;
+      1)
+        echo "Sentinel check failed: the audio fix is not applied." >&2
+        exit 6
+        ;;
+      *)
+        echo "Sentinel check could not be completed; treating the fix as not applied." >&2
+        exit 6
+        ;;
+    esac
+fi
+
 # Confirmation logic
 if [ "$AUTO_CONFIRM" -ne 1 ]; then
   echo -n "These verbs were generated from a ONEXPLAYER 2 PRO (8840u), I can't be sure it will work for you. USE ON YOUR OWN RISK!!! continue [y/N] " >&2
@@ -1457,6 +1589,16 @@ run_verbs "$device"
 if [ "$HDA_VERB_FAILURES" -gt 0 ]; then
     echo "Completed with $HDA_VERB_FAILURES hda-verb failure(s)." >&2
     exit 5
+fi
+
+if [ -n "$FIX_SENTINEL_COEFS" ]; then
+    verify_status=0
+    check_sentinels "$device" || verify_status=$?
+    if [ "$verify_status" -ne 0 ]; then
+        echo "Applied the verb sequence, but sentinel verification failed." >&2
+        exit 6
+    fi
+    echo "Sentinel verification passed after applying the fix." >&2
 fi
 
 echo "Applied ONEXPLAYER 2 Pro audio fix." >&2
