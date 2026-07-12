@@ -100,19 +100,19 @@ This writes `/etc/modprobe.d/oxp2p-audio-fix-power-save.conf` to keep the codec 
 
 ### Audio is crackly or stutters after resume
 
-Some systems bring the HDA codec back before the audio stack has fully settled. The resume hook waits briefly, reapplies the fix, then applies it once more after a short delay. Reinstall the latest hook with your strict codec ids:
+Some systems bring the HDA codec back before the audio stack has fully settled. The resume hook waits briefly, reapplies the fix, then applies it once more after a short delay. Reinstall the latest hook with **your own** strict codec ids (see [VARIANTS.md](VARIANTS.md) for the ids of known variants):
 
 ```bash
-sudo bash ./install.sh --codec-vendor-id 0x10ec0245 --codec-subsystem-id 0x1f751602
+sudo bash ./install.sh --codec-vendor-id <your-vendor-id> --codec-subsystem-id <your-subsystem-id>
 ```
 
 If the issue still happens, try keeping the HDA codec powered while awake:
 
 ```bash
-sudo bash ./install.sh --codec-vendor-id 0x10ec0245 --codec-subsystem-id 0x1f751602 --disable-hda-power-save
+sudo bash ./install.sh --codec-vendor-id <your-vendor-id> --codec-subsystem-id <your-subsystem-id> --disable-hda-power-save
 ```
 
-The resume timings are stored in `/usr/local/lib/oxp2p-audio-fix/oxp2p-audio-fix.env` and can be tuned with `RESUME_SETTLE_SECONDS`, `RESUME_REAPPLY_COUNT`, and `RESUME_REAPPLY_INTERVAL_SECONDS`.
+The resume timings are stored in `/usr/local/lib/oxp2p-audio-fix/oxp2p-audio-fix.env` and can be tuned with `RESUME_WAIT_SECONDS`, `RESUME_SETTLE_SECONDS`, `RESUME_REAPPLY_COUNT`, and `RESUME_REAPPLY_INTERVAL_SECONDS`. Re-running the installer preserves previously tuned timings.
 
 ---
 
