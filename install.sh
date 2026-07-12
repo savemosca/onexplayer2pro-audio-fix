@@ -148,7 +148,7 @@ case "$CODEC_NAME_PATTERN" in
     echo "Codec name pattern (--codec-name-pattern) must not be empty." >&2
     exit 64
     ;;
-  *'"'*|*'\'*|*'$'*|*'`'*|*'='*|*$'\n'*|*$'\r'*)
+  *'"'*|*\\*|*'$'*|*'`'*|*'='*|*$'\n'*|*$'\r'*)
     echo "Codec name pattern (--codec-name-pattern) must not contain quotes, backslashes, dollar signs, backticks, '=' or newlines: $CODEC_NAME_PATTERN" >&2
     exit 64
     ;;
@@ -229,6 +229,10 @@ write_env_file() {
         printf 'EXPECTED_CODEC_SUBSYSTEM_IDS="%s"\n' "$CODEC_SUBSYSTEM_IDS"
         printf 'EXPECTED_CODEC_NAME_PATTERN="%s"\n' "$CODEC_NAME_PATTERN"
         printf 'ALLOW_UNSUPPORTED_CODEC="0"\n'
+        printf 'RESUME_WAIT_SECONDS="30"\n'
+        printf 'RESUME_SETTLE_SECONDS="3"\n'
+        printf 'RESUME_REAPPLY_COUNT="2"\n'
+        printf 'RESUME_REAPPLY_INTERVAL_SECONDS="2"\n'
     } > "$ENV_PATH"
     chmod 0644 "$ENV_PATH"
     chown root:root "$ENV_PATH"

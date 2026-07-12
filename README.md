@@ -98,6 +98,22 @@ sudo bash ./install.sh --disable-hda-power-save
 
 This writes `/etc/modprobe.d/oxp2p-audio-fix-power-save.conf` to keep the codec powered (at a small battery cost) and applies the setting immediately when possible. The uninstaller removes the override.
 
+### Audio is crackly or stutters after resume
+
+Some systems bring the HDA codec back before the audio stack has fully settled. The resume hook waits briefly, reapplies the fix, then applies it once more after a short delay. Reinstall the latest hook with your strict codec ids:
+
+```bash
+sudo bash ./install.sh --codec-vendor-id 0x10ec0245 --codec-subsystem-id 0x1f751602
+```
+
+If the issue still happens, try keeping the HDA codec powered while awake:
+
+```bash
+sudo bash ./install.sh --codec-vendor-id 0x10ec0245 --codec-subsystem-id 0x1f751602 --disable-hda-power-save
+```
+
+The resume timings are stored in `/usr/local/lib/oxp2p-audio-fix/oxp2p-audio-fix.env` and can be tuned with `RESUME_SETTLE_SECONDS`, `RESUME_REAPPLY_COUNT`, and `RESUME_REAPPLY_INTERVAL_SECONDS`.
+
 ---
 
 ## Uninstall
